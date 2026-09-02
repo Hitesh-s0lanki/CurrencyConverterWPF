@@ -1,0 +1,97 @@
+name: Release
+
+# Every merge into master publishes a new version automatically.
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release, e.g. v1.2.0. Leave blank to bump the patch.'
+        required: false
+
+# Required for gh release create; the default token is read-only.
+permissions:
+  contents: write
+
+# Two merges in quick succession must not race for the same version number.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Full history so the previous tags are visible to the version bump.
+          fetch-depth: 0
+
+      - name: Work out the next version
+        id: ver
+        shell: pwsh
+        run: |
+          $explicit = '${{ github.event.inputs.version }}'.Trim()
+          if ($explicit) {
+            $tag = $explicit
+          } else {
+            $tags = @(git tag --list 'v*' --sort=-v:refname)
+            if ($tags.Count -eq 0) {
+              $tag = 'v1.0.0'
+            } elseif ($tags[0].Trim() -match '^v(\d+)\.(\d+)\.(\d+)$') {
+              $tag = "v$($Matches[1]).$($Matches[2]).$([int]$Matches[3] + 1)"
+            } else {
+              throw "Latest tag '$($tags[0])' is not vMAJOR.MINOR.PATCH; cannot bump it."
+            }
+          }
+          # MSBuild's Version property must be numeric, so expose both forms:
+          # 'v1.0.0' for the git tag, '1.0.0' for -p:Version.
+          $number = $tag.TrimStart('v')
+          Write-Host "Releasing $tag (assembly version $number)"
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "version=$number" >> $env:GITHUB_OUTPUT
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Publish self-contained single-file exe
+        run: >
+          dotnet publish CurrencyConverter/CurrencyConverter.csproj
+          -c Release
+          -r win-x64
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:EnableCompressionInSingleFile=true
+          -p:Version=${{ steps.ver.outputs.version }}
+          -o publish
+
+      - name: Verify the artifact
+        shell: pwsh
+        run: |
+          $exe = 'publish/CurrencyConverter.exe'
+          if (-not (Test-Path $exe)) { throw "publish did not produce $exe" }
+          $mb = [math]::Round((Get-Item $exe).Length / 1MB, 1)
+          Write-Host "CurrencyConverter.exe is $mb MB"
+          # A framework-dependent build is ~1 MB. Anything that small means
+          # --self-contained silently stopped taking effect, and the download
+          # would crash on any machine without the .NET runtime installed.
+          if ($mb -lt 40) { throw "exe is only $mb MB - it is probably not self-contained" }
+
+      - name: Create the release and upload the exe
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $tag = '${{ steps.ver.outputs.tag }}'
+          # The asset name must stay CurrencyConverter.exe - the README's
+          # /releases/latest/download/ permalink resolves by filename.
+          gh release create $tag publish/CurrencyConverter.exe `
+            --target $env:GITHUB_SHA `
+            --title $tag `
+            --generate-notes
