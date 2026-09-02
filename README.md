@@ -7,7 +7,7 @@ reference rates.
 
 ## Download
 
-[**Download CurrencyConverter.exe**](https://github.com/OWNER/REPO/releases/latest/download/CurrencyConverter.exe)
+[**Download CurrencyConverter.exe**](https://github.com/Hitesh-s0lanki/CurrencyConverterWPF/releases/latest/download/CurrencyConverter.exe)
 — Windows 64-bit · ~65 MB · nothing to install
 
 The .NET runtime is bundled inside the executable, so it runs on a clean Windows machine with
@@ -35,8 +35,8 @@ no prerequisites. Download it, double-click, done.
 ## Getting started
 
 ```bash
-git clone <your-repo-url>
-cd CurrencyConverter
+git clone https://github.com/Hitesh-s0lanki/CurrencyConverterWPF.git
+cd CurrencyConverterWPF
 dotnet run --project CurrencyConverter
 ```
 
