@@ -1,9 +1,9 @@
 name: Release
 
-# Every merge into main publishes a new version automatically.
+# Every merge into master publishes a new version automatically.
 on:
   push:
-    branches: [ main ]
+    branches: [ master ]
   workflow_dispatch:
     inputs:
       version:
